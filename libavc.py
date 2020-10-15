@@ -26,8 +26,9 @@ def main(argv=sys.argv[1:]):
         cmd_log(args)
     elif args.command == "ls-tree":
         cmd_ls_tree(args)
+    elif args.command == "checkout":
+        cmd_checkout(args)
     # elif args.command == "add"         : cmd_add(args)
-    # elif args.command == "checkout"    : cmd_checkout(args)
     # elif args.command == "commit"      : cmd_commit(args)
     # elif args.command == "merge"       : cmd_merge(args)
     # elif args.command == "rebase"      : cmd_rebase(args)
@@ -451,3 +452,38 @@ def cmd_ls_tree(args):
             object_read(repo, item.sha).fmt.decode("ascii"),
             item.sha,
             item.path.decode("ascii")))
+
+
+argsp = argsubparser.add_parser("checkout", help="Checkout a commit inside of a directory.")
+argsp.add_argument("commit", help="The commit or tree to checkout.")
+argsp.add_argument("path", help="The EMPTY directory to checkout on.")
+
+
+def cmd_checkout(args):
+    repo = repo_find()
+    obj = object_read(repo, object_find(repo, args.commit))
+    if obj.fmt == b'commit':
+        obj = object_read(repo, obj.kvlm[b'tree'].decode("ascii"))
+
+    if os.path.exists(args.path):
+        if not os.path.isdir(args.path):
+            raise Exception("Not a directory {0}!".format(args.path))
+        if os.listdir(args.path):
+            raise Exception("Not empty {0}!".format(args.path))
+    else:
+        os.makedirs(args.path)
+
+    tree_checkout(repo, obj, os.path.realpath(args.path).encode())
+
+
+def tree_checkout(repo, tree, path):
+    for item in tree.items:
+        obj = object_read(repo, item.sha)
+        dest = os.path.join(path, item.path)
+
+        if obj.fmt == b'tree':
+            os.mkdir(dest)
+            tree_checkout(repo, obj, dest)
+        elif obj.fmt == b'blob':
+            with open(dest, 'wb') as f:
+                f.write(obj.blobdata)
