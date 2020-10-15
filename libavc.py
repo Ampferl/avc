@@ -102,6 +102,10 @@ def object_read(repo, sha):
         return c(repo, raw[y+1:])
 
 
+def object_find(repo, name, fmt=None, follow=True):
+    return name
+
+
 def repo_path(repo, *path):
     return os.path.join(repo.gitdir, *path)
 
