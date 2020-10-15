@@ -138,3 +138,15 @@ def hash_object(data, obj_type, write=True):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             write_file(path, zlib.compress(full_data))
     return sha1
+
+
+def write_file(path, data):
+    with open(path, 'wb') as f:
+        f.write(data)
+def init(repo):
+    os.mkdir(repo)
+    os.mkdir(os.path.join(repo, '.git'))
+    for name in ['objects', 'refs', 'refs/heads']:
+        os.mkdir(os.path.join(repo, '.git', name))
+    write_file(os.path.join(repo, '.git', 'HEAD'), b'ref: refs/heads/master')
+    print('initialized empty repository: {}'.format(repo))
