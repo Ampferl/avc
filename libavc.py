@@ -236,6 +236,57 @@ def repo_find(path=".", required=True):
     return repo_find(parent, required)
 
 
+def kvlm_parse(raw, start=0, dct=None):
+    if not dct:
+        dct = collections.OrderedDict()
+
+    spc = raw.find(b' ', start)
+    nl = raw.find(b'\n', start)
+
+    if (spc < 0) or (nl < spc):
+        assert(nl == start)
+        dct[b''] = raw[start+1:]
+        return dct
+
+    key = raw[start:spc]
+
+    end = start
+    while True:
+        end = raw.find(b'\n', end+1)
+        if raw[end+1] != ord(' '):
+            break
+
+    value = raw[spc+1:end].replace(b'\n ', b'\n')
+
+    if key in dct:
+        if type(dct[key]) == list:
+            dct[key].append(value)
+        else:
+            dct[key] = [dct[key], value]
+    else:
+        dct[key] = value
+
+    return kvlm_parse(raw, start=end+1, dct=dct)
+
+
+def kvlm_serialize(kvlm):
+    ret = b''
+
+    for k in kvlm.keys():
+        if k == b'':
+            continue
+        val = kvlm[k]
+        if type(val) != list:
+            val = [val]
+
+        for v in val:
+            ret += k + b' ' + v.replace(b'\n', b'\n ') + b'\n'
+
+    ret += b'\n' + kvlm[b'']
+
+    return ret
+
+
 argsp = argsubparser.add_parser("init", help="Initialize a new, empty repository.")
 argsp.add_argument("path", metavar="directory", nargs="?", default=".", help="Where to create the repository.")
 
