@@ -67,3 +67,18 @@ def repo_file(repo, *path, mkdir=False):
         return repo_path(repo, *path)
 
 
+def repo_dir(repo, *path, mkdir=False):
+    path = repo_path(repo, *path)
+
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            return path
+        else:
+            raise Exception("Not a directory %s" % path)
+
+    if mkdir:
+        os.makedirs(path)
+        return path
+    else:
+        return None
+
