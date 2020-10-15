@@ -77,6 +77,136 @@ def main():
         assert False, 'unexpected command {!r}'.format(args.command)
 
 
+def push(git_url, username=None, password=None):
+    if username is None:
+        username = os.environ['GIT_USERNAME']
+    if password is None:
+        password = os.environ['GIT_PASSWORD']
+    remote_sha1 = get_remote_master_hash(git_url, username, password)
+    local_sha1 = get_local_master_hash()
+    missing = find_missing_objects(local_sha1, remote_sha1)
+    print('updating remote master from {} to {} ({} object{})'.format(
+            remote_sha1 or 'no commits', local_sha1, len(missing),
+            '' if len(missing) == 1 else 's'))
+    lines = ['{} {} refs/heads/master\x00 report-status'.format(
+            remote_sha1 or ('0' * 40), local_sha1).encode()]
+    data = build_lines_data(lines) + create_pack(missing)
+    url = git_url + '/git-receive-pack'
+    response = http_request(url, username, password, data=data)
+    lines = extract_lines(response)
+    assert len(lines) >= 2, \
+        'expected at least 2 lines, got {}'.format(len(lines))
+    assert lines[0] == b'unpack ok\n', \
+        "expected line 1 b'unpack ok', got: {}".format(lines[0])
+    assert lines[1] == b'ok refs/heads/master\n', \
+        "expected line 2 b'ok refs/heads/master\n', got: {}".format(lines[1])
+    return (remote_sha1, missing)
+
+
+def extract_lines(data):
+    lines = []
+    i = 0
+    for _ in range(1000):
+        line_length = int(data[i:i + 4], 16)
+        line = data[i + 4:i + line_length]
+        lines.append(line)
+        if line_length == 0:
+            i += 4
+        else:
+            i += line_length
+        if i >= len(data):
+            break
+    return lines
+
+
+def build_lines_data(lines):
+    result = []
+    for line in lines:
+        result.append('{:04x}'.format(len(line) + 5).encode())
+        result.append(line)
+        result.append(b'\n')
+    result.append(b'0000')
+    return b''.join(result)
+
+
+def http_request(url, username, password, data=None):
+    password_manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    password_manager.add_password(None, url, username, password)
+    auth_handler = urllib.request.HTTPBasicAuthHandler(password_manager)
+    opener = urllib.request.build_opener(auth_handler)
+    f = opener.open(url, data=data)
+    return f.read()
+
+
+def get_remote_master_hash(git_url, username, password):
+    url = git_url + '/info/refs?service=git-receive-pack'
+    response = http_request(url, username, password)
+    lines = extract_lines(response)
+    assert lines[0] == b'# service=git-receive-pack\n'
+    assert lines[1] == b''
+    if lines[2][:40] == b'0' * 40:
+        return None
+    master_sha1, master_ref = lines[2].split(b'\x00')[0].split()
+    assert master_ref == b'refs/heads/master'
+    assert len(master_sha1) == 40
+    return master_sha1.decode()
+
+
+def find_tree_objects(tree_sha1):
+    objects = {tree_sha1}
+    for mode, path, sha1 in read_tree(sha1=tree_sha1):
+        if stat.S_ISDIR(mode):
+            objects.update(find_tree_objects(sha1))
+        else:
+            objects.add(sha1)
+    return objects
+
+
+def find_commit_objects(commit_sha1):
+    objects = {commit_sha1}
+    obj_type, commit = read_object(commit_sha1)
+    assert obj_type == 'commit'
+    lines = commit.decode().splitlines()
+    tree = next(l[5:45] for l in lines if l.startswith('tree '))
+    objects.update(find_tree_objects(tree))
+    parents = (l[7:47] for l in lines if l.startswith('parent '))
+    for parent in parents:
+        objects.update(find_commit_objects(parent))
+    return objects
+
+
+def find_missing_objects(local_sha1, remote_sha1):
+    local_objects = find_commit_objects(local_sha1)
+    if remote_sha1 is None:
+        return local_objects
+    remote_objects = find_commit_objects(remote_sha1)
+    return local_objects - remote_objects
+
+
+def encode_pack_object(obj):
+    obj_type, data = read_object(obj)
+    type_num = ObjectType[obj_type].value
+    size = len(data)
+    byte = (type_num << 4) | (size & 0x0f)
+    size >>= 4
+    header = []
+    while size:
+        header.append(byte | 0x80)
+        byte = size & 0x7f
+        size >>= 7
+    header.append(byte)
+    return bytes(header) + zlib.compress(data)
+
+
+def create_pack(objects):
+    header = struct.pack('!4sLL', b'PACK', 2, len(objects))
+    body = b''.join(encode_pack_object(o) for o in sorted(objects))
+    contents = header + body
+    sha1 = hashlib.sha1(contents).digest()
+    data = contents + sha1
+    return data
+
+
 def status():
     changed, new, deleted = get_status()
     if changed:
