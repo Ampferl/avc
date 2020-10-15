@@ -12,7 +12,7 @@ import time
 import urllib.request
 import zlib
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     sub_parsers = parser.add_subparsers(dest='command', metavar='command')
     sub_parsers.required = True
