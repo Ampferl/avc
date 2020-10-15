@@ -61,3 +61,9 @@ class GitRepository(object):
 def repo_path(repo, *path):
     return os.path.join(repo.gitdir, *path)
 
+
+def repo_file(repo, *path, mkdir=False):
+    if repo_dir(repo, *path[:-1], mkdir=mkdir):
+        return repo_path(repo, *path)
+
+
