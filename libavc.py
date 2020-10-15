@@ -22,10 +22,11 @@ def main(argv=sys.argv[1:]):
         cmd_cat_file(args)
     elif args.command == "hash-object":
         cmd_hash_object(args)
+    elif args.command == "log":
+        cmd_log(args)
     # elif args.command == "add"         : cmd_add(args)
     # elif args.command == "checkout"    : cmd_checkout(args)
     # elif args.command == "commit"      : cmd_commit(args)
-    # elif args.command == "log"         : cmd_log(args)
     # elif args.command == "ls-tree"     : cmd_ls_tree(args)
     # elif args.command == "merge"       : cmd_merge(args)
     # elif args.command == "rebase"      : cmd_rebase(args)
@@ -87,6 +88,26 @@ class GitBlob(GitObject):
         self.blobdata = data
 
 
+class GitTree(GitObject):
+    fmt = b'blob'
+
+    def serialize(self):
+        raise Exception("Unimplemented!")
+
+    def deserialize(self, data):
+        raise Exception("Unimplemented!")
+
+
+class GitTag(GitObject):
+    fmt = b'blob'
+
+    def serialize(self):
+        raise Exception("Unimplemented!")
+
+    def deserialize(self, data):
+        raise Exception("Unimplemented!")
+
+
 class GitCommit(GitObject):
     fmt = b'commit'
 
@@ -108,7 +129,7 @@ def object_read(repo, sha):
 
         y = raw.find(b'\x00', x)
         size = int(raw[x:y].decode("ascii"))
-        if size != len(raw)-y-1:
+        if size != len(raw) - y - 1:
             raise Exception("Malformed object {0}: bad length".format(sha))
 
         if fmt == b'commit':
@@ -122,7 +143,7 @@ def object_read(repo, sha):
         else:
             raise Exception("Unknown type %s for object %s".format(fmt.decode("ascii"), sha))
 
-        return c(repo, raw[y+1:])
+        return c(repo, raw[y + 1:])
 
 
 def object_find(repo, name, fmt=None, follow=True):
@@ -197,10 +218,10 @@ def repo_create(path):
     else:
         os.makedirs(repo.worktree)
 
-    assert(repo_dir(repo, "branches", mkdir=True))
-    assert(repo_dir(repo, "objects", mkdir=True))
-    assert(repo_dir(repo, "refs", "tags", mkdir=True))
-    assert(repo_dir(repo, "refs", "heads", mkdir=True))
+    assert (repo_dir(repo, "branches", mkdir=True))
+    assert (repo_dir(repo, "objects", mkdir=True))
+    assert (repo_dir(repo, "refs", "tags", mkdir=True))
+    assert (repo_dir(repo, "refs", "heads", mkdir=True))
 
     # .git/description
     with open(repo_file(repo, "description"), "w") as f:
@@ -254,19 +275,19 @@ def kvlm_parse(raw, start=0, dct=None):
     nl = raw.find(b'\n', start)
 
     if (spc < 0) or (nl < spc):
-        assert(nl == start)
-        dct[b''] = raw[start+1:]
+        assert (nl == start)
+        dct[b''] = raw[start + 1:]
         return dct
 
     key = raw[start:spc]
 
     end = start
     while True:
-        end = raw.find(b'\n', end+1)
-        if raw[end+1] != ord(' '):
+        end = raw.find(b'\n', end + 1)
+        if raw[end + 1] != ord(' '):
             break
 
-    value = raw[spc+1:end].replace(b'\n ', b'\n')
+    value = raw[spc + 1:end].replace(b'\n ', b'\n')
 
     if key in dct:
         if type(dct[key]) == list:
@@ -276,7 +297,7 @@ def kvlm_parse(raw, start=0, dct=None):
     else:
         dct[key] = value
 
-    return kvlm_parse(raw, start=end+1, dct=dct)
+    return kvlm_parse(raw, start=end + 1, dct=dct)
 
 
 def kvlm_serialize(kvlm):
@@ -335,3 +356,37 @@ def cmd_hash_object(args):
     with open(args.path, "rb") as fd:
         sha = object_hash(fd, args.type.encode(), repo)
         print(sha)
+
+
+argsp = argsubparser.add_parser("log", help="Display history of a given commit.")
+argsp.add_argument("commit", default="HEAD", nargs="?", help="Commit to start at.")
+
+
+def cmd_log(args):
+    repo = repo_find()
+
+    print("digraph avclog{")
+    log_graphviz(repo, object_find(repo, args.commit), set())
+    print("}")
+
+
+def log_graphviz(repo, sha, seen):
+    if sha in seen:
+        return
+    seen.add(sha)
+
+    commit = object_read(repo, sha)
+    assert (commit.fmt == b'commit')
+
+    if not b'parent' in commit.kvlm.keys():
+        return
+
+    parents = commit.kvlm[b'parent']
+
+    if type(parents) != list:
+        parents = [parents]
+
+    for p in parents:
+        p = p.decode("ascii")
+        print("c_{0} -> c_{1};".format(sha, p))
+        log_graphviz(repo, p, seen)
