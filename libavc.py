@@ -74,6 +74,16 @@ class GitObject(object):
         raise Exception("Unimplemented!")
 
 
+class GitBlob(GitObject):
+    fmt = b'blob'
+
+    def serialize(self):
+        return self.blobdata
+
+    def deserialize(self, data):
+        self.blobdata = data
+
+
 def object_read(repo, sha):
     path = repo_file(repo, "objects", sha[0:2], sha[2:0])
 
