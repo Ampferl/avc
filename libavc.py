@@ -76,3 +76,65 @@ def main():
     else:
         assert False, 'unexpected command {!r}'.format(args.command)
 
+
+
+IndexEntry = collections.namedtuple('IndexEntry', [
+    'ctime_s', 'ctime_n', 'mtime_s', 'mtime_n', 'dev', 'ino', 'mode', 'uid',
+    'gid', 'size', 'sha1', 'flags', 'path',
+])
+
+def add(paths):
+    paths = [p.replace('\\', '/') for p in paths]
+    all_entries = read_index()
+    entries = [e for e in all_entries if e.path not in paths]
+    for path in paths:
+        sha1 = hash_object(read_file(path), 'blob')
+        st = os.stat(path)
+        flags = len(path.encode())
+        assert flags < (1 << 12)
+        entry = IndexEntry(
+                int(st.st_ctime), 0, int(st.st_mtime), 0, st.st_dev,
+                st.st_ino, st.st_mode, st.st_uid, st.st_gid, st.st_size,
+                bytes.fromhex(sha1), flags, path)
+        entries.append(entry)
+    entries.sort(key=operator.attrgetter('path'))
+    write_index(entries)
+
+
+def read_index():
+    try:
+        data = read_file(os.path.join('.git', 'index'))
+    except FileNotFoundError:
+        return []
+    digest = hashlib.sha1(data[:-20]).digest()
+    assert digest == data[-20:], 'invalid index checksum'
+    signature, version, num_entries = struct.unpack('!4sLL', data[:12])
+    assert signature == b'DIRC', \
+            'invalid index signature {}'.format(signature)
+    assert version == 2, 'unknown index version {}'.format(version)
+    entry_data = data[12:-20]
+    entries = []
+    i = 0
+    while i + 62 < len(entry_data):
+        fields_end = i + 62
+        fields = struct.unpack('!LLLLLLLLLL20sH', entry_data[i:fields_end])
+        path_end = entry_data.index(b'\x00', fields_end)
+        path = entry_data[fields_end:path_end]
+        entry = IndexEntry(*(fields + (path.decode(),)))
+        entries.append(entry)
+        entry_len = ((62 + len(path) + 8) // 8) * 8
+        i += entry_len
+    assert len(entries) == num_entries
+    return entries
+
+
+def hash_object(data, obj_type, write=True):
+    header = '{} {}'.format(obj_type, len(data)).encode()
+    full_data = header + b'\x00' + data
+    sha1 = hashlib.sha1(full_data).hexdigest()
+    if write:
+        path = os.path.join('.git', 'objects', sha1[:2], sha1[2:])
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            write_file(path, zlib.compress(full_data))
+    return sha1
