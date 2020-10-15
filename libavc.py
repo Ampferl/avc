@@ -32,11 +32,12 @@ def main(argv=sys.argv[1:]):
         cmd_show_ref(args)
     elif args.command == "tag":
         cmd_tag(args)
+    elif args.command == "rev-parse":
+        cmd_rev_parse(args)
     # elif args.command == "add"         : cmd_add(args)
     # elif args.command == "commit"      : cmd_commit(args)
     # elif args.command == "merge"       : cmd_merge(args)
     # elif args.command == "rebase"      : cmd_rebase(args)
-    # elif args.command == "rev-parse"   : cmd_rev_parse(args)
     # elif args.command == "rm"          : cmd_rm(args)
 
 
@@ -64,6 +65,24 @@ class GitRepository(object):
             vers = int(self.conf.get("core", "repositoryformatversion"))
             if vers != 0:
                 raise Exception("Unsupported repositoryformatversion %s" % vers)
+
+
+class GitIndexEntry(object):
+    ctime = None
+    mtime = None
+    dev = None
+    ino = None
+    mode_type = None
+    mode_perms = None
+    uid = None
+    gid = None
+    size = None
+    obj = None
+    flag_assume_valid = None
+    flag_extended = None
+    flag_stage = None
+    flag_name_length = None
+    name = None
 
 
 class GitObject(object):
@@ -245,7 +264,6 @@ def object_find(repo, name, fmt=None, follow=True):
             sha = obj.kvlm[b'tree'].decode("ascii")
         else:
             return None
-
 
 
 def object_write(obj, actually_write=True):
@@ -625,3 +643,17 @@ def cmd_tag(args):
     else:
         refs = ref_list(repo)
         show_ref(repo, refs["tags"], with_hash=False)
+
+
+argsp = argsubparser.add_parser("rev-parse",help="Parse revision (or other objects )identifiers")
+argsp.add_argument("--wyag-type", metavar="type", dest="type", choices=["blob", "commit", "tag", "tree"], default=None, help="Specify the expected type")
+argsp.add_argument("name", help="The name to parse")
+
+
+def cmd_rev_parse(args):
+    if args.type:
+        fmt = args.type.encode()
+
+    repo = repo_find()
+
+    print(object_find(repo, args.name, args.type, follow=True))
