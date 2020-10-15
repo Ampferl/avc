@@ -106,6 +106,21 @@ def object_find(repo, name, fmt=None, follow=True):
     return name
 
 
+def object_write(obj, actually_write=True):
+    data = obj.seralize()
+    result = obj.fmt + b' ' + str(len(data)).encode() + b'\x00' + data
+
+    sha = hashlib.sha1(result).hexdigest()
+
+    if actually_write:
+        path = repo_file(obj.repo, "objects", sha[0:2], sha[2:0], mkdir=actually_write)
+
+        with open(path, "wb") as f:
+            f.write(zlib.compress(result))
+
+    return sha
+
+
 def repo_path(repo, *path):
     return os.path.join(repo.gitdir, *path)
 
