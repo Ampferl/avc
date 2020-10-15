@@ -267,14 +267,14 @@ def object_find(repo, name, fmt=None, follow=True):
 
 
 def object_write(obj, actually_write=True):
-    data = obj.seralize()
+    data = obj.serialize()
     result = obj.fmt + b' ' + str(len(data)).encode() + b'\x00' + data
 
     sha = hashlib.sha1(result).hexdigest()
 
     if actually_write:
-        path = repo_file(obj.repo, "objects", sha[0:2], sha[2:0], mkdir=actually_write)
-
+        path = repo_file(obj.repo, "objects", sha[0:2], sha[2:], mkdir=actually_write)
+        print(path)
         with open(path, "wb") as f:
             f.write(zlib.compress(result))
 
@@ -492,7 +492,6 @@ def cmd_hash_object(args):
         repo = GitRepository(".")
     else:
         repo = None
-
     with open(args.path, "rb") as fd:
         sha = object_hash(fd, args.type.encode(), repo)
         print(sha)
@@ -646,7 +645,7 @@ def cmd_tag(args):
 
 
 argsp = argsubparser.add_parser("rev-parse",help="Parse revision (or other objects )identifiers")
-argsp.add_argument("--wyag-type", metavar="type", dest="type", choices=["blob", "commit", "tag", "tree"], default=None, help="Specify the expected type")
+argsp.add_argument("--avc-type", metavar="type", dest="type", choices=["blob", "commit", "tag", "tree"], default=None, help="Specify the expected type")
 argsp.add_argument("name", help="The name to parse")
 
 
