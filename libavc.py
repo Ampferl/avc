@@ -28,13 +28,14 @@ def main(argv=sys.argv[1:]):
         cmd_ls_tree(args)
     elif args.command == "checkout":
         cmd_checkout(args)
+    elif args.command == "show-ref":
+        cmd_show_ref(args)
     # elif args.command == "add"         : cmd_add(args)
     # elif args.command == "commit"      : cmd_commit(args)
     # elif args.command == "merge"       : cmd_merge(args)
     # elif args.command == "rebase"      : cmd_rebase(args)
     # elif args.command == "rev-parse"   : cmd_rev_parse(args)
     # elif args.command == "rm"          : cmd_rm(args)
-    # elif args.command == "show-ref"    : cmd_show_ref(args)
     # elif args.command == "tag"         : cmd_tag(args)
 
 
@@ -364,6 +365,30 @@ def kvlm_serialize(kvlm):
     return ret
 
 
+def ref_resolve(repo, ref):
+    with open(repo_file(repo, ref), 'r') as fp:
+        data = fp.read()[:-1]
+    if data.startswith("ref: "):
+        return ref_resolve(repo, data[5:])
+    else:
+        return data
+
+
+def ref_list(repo, path=None):
+    if not path:
+        path = repo_dir(repo, "refs")
+    ret = collections.OrderedDict()
+
+    for f in sorted(os.listdir(path)):
+        can = os.path.join(path, f)
+        if os.path.isdir(can):
+            ret[f] = ref_list(repo, can)
+        else:
+            ret[f] = ref_resolve(repo, can)
+
+    return ret
+
+
 argsp = argsubparser.add_parser("init", help="Initialize a new, empty repository.")
 argsp.add_argument("path", metavar="directory", nargs="?", default=".", help="Where to create the repository.")
 
@@ -487,3 +512,23 @@ def tree_checkout(repo, tree, path):
         elif obj.fmt == b'blob':
             with open(dest, 'wb') as f:
                 f.write(obj.blobdata)
+
+
+argsp = argsubparser.add_parser("show-ref", help="List references.")
+
+
+def cmd_show_ref(args):
+    repo = repo_find()
+    refs = ref_list(repo)
+    show_ref(repo, refs, prefix="refs")
+
+
+def show_ref(repo, refs, with_hash=True, prefix=""):
+    for k, v in refs.items():
+        if type(v) == str:
+            print("{0}{1}{2}".format(
+                v + " " if with_hash else "",
+                prefix + "/" if prefix else "",
+                k))
+        else:
+            show_ref(repo, v, with_hash=with_hash, prefix="{0}{1}{2}".format(prefix, "/" if prefix else "", k))
