@@ -83,6 +83,132 @@ IndexEntry = collections.namedtuple('IndexEntry', [
     'gid', 'size', 'sha1', 'flags', 'path',
 ])
 
+
+class ObjectType(enum.Enum):
+    commit = 1
+    tree = 2
+    blob = 3
+
+
+def commit(message, author=None):
+    tree = write_tree()
+    parent = get_local_master_hash()
+    if author is None:
+        author = '{} <{}>'.format(
+                os.environ['GIT_AUTHOR_NAME'], os.environ['GIT_AUTHOR_EMAIL'])
+    timestamp = int(time.mktime(time.localtime()))
+    utc_offset = -time.timezone
+    author_time = '{} {}{:02}{:02}'.format(
+            timestamp,
+            '+' if utc_offset > 0 else '-',
+            abs(utc_offset) // 3600,
+            (abs(utc_offset) // 60) % 60)
+    lines = ['tree ' + tree]
+    if parent:
+        lines.append('parent ' + parent)
+    lines.append('author {} {}'.format(author, author_time))
+    lines.append('committer {} {}'.format(author, author_time))
+    lines.append('')
+    lines.append(message)
+    lines.append('')
+    data = '\n'.join(lines).encode()
+    sha1 = hash_object(data, 'commit')
+    master_path = os.path.join('.git', 'refs', 'heads', 'master')
+    write_file(master_path, (sha1 + '\n').encode())
+    print('committed to master: {:7}'.format(sha1))
+    return sha1
+
+
+def write_tree():
+    tree_entries = []
+    for entry in read_index():
+        assert '/' not in entry.path, \
+                'currently only supports a single, top-level directory'
+        mode_path = '{:o} {}'.format(entry.mode, entry.path).encode()
+        tree_entry = mode_path + b'\x00' + entry.sha1
+        tree_entries.append(tree_entry)
+    return hash_object(b''.join(tree_entries), 'tree')
+
+
+def get_local_master_hash():
+    master_path = os.path.join('.git', 'refs', 'heads', 'master')
+    try:
+        return read_file(master_path).decode().strip()
+    except FileNotFoundError:
+        return None
+
+
+def cat_file(mode, sha1_prefix):
+    obj_type, data = read_object(sha1_prefix)
+    if mode in ['commit', 'tree', 'blob']:
+        if obj_type != mode:
+            raise ValueError('expected object type {}, got {}'.format(
+                    mode, obj_type))
+        sys.stdout.buffer.write(data)
+    elif mode == 'size':
+        print(len(data))
+    elif mode == 'type':
+        print(obj_type)
+    elif mode == 'pretty':
+        if obj_type in ['commit', 'blob']:
+            sys.stdout.buffer.write(data)
+        elif obj_type == 'tree':
+            for mode, path, sha1 in read_tree(data=data):
+                type_str = 'tree' if stat.S_ISDIR(mode) else 'blob'
+                print('{:06o} {} {}\t{}'.format(mode, type_str, sha1, path))
+        else:
+            assert False, 'unhandled object type {!r}'.format(obj_type)
+    else:
+        raise ValueError('unexpected mode {!r}'.format(mode))
+
+
+def read_tree(sha1=None, data=None):
+    if sha1 is not None:
+        obj_type, data = read_object(sha1)
+        assert obj_type == 'tree'
+    elif data is None:
+        raise TypeError('must specify "sha1" or "data"')
+    i = 0
+    entries = []
+    for _ in range(1000):
+        end = data.find(b'\x00', i)
+        if end == -1:
+            break
+        mode_str, path = data[i:end].decode().split()
+        mode = int(mode_str, 8)
+        digest = data[end + 1:end + 21]
+        entries.append((mode, path, digest.hex()))
+        i = end + 1 + 20
+    return entries
+
+
+def read_object(sha1_prefix):
+    path = find_object(sha1_prefix)
+    full_data = zlib.decompress(read_file(path))
+    nul_index = full_data.index(b'\x00')
+    header = full_data[:nul_index]
+    obj_type, size_str = header.decode().split()
+    size = int(size_str)
+    data = full_data[nul_index + 1:]
+    assert size == len(data), 'expected size {}, got {} bytes'.format(
+            size, len(data))
+    return (obj_type, data)
+
+
+def find_object(sha1_prefix):
+    if len(sha1_prefix) < 2:
+        raise ValueError('hash prefix must be 2 or more characters')
+    obj_dir = os.path.join('.git', 'objects', sha1_prefix[:2])
+    rest = sha1_prefix[2:]
+    objects = [name for name in os.listdir(obj_dir) if name.startswith(rest)]
+    if not objects:
+        raise ValueError('object {!r} not found'.format(sha1_prefix))
+    if len(objects) >= 2:
+        raise ValueError('multiple objects ({}) with prefix {!r}'.format(
+                len(objects), sha1_prefix))
+    return os.path.join(obj_dir, objects[0])
+
+
 def add(paths):
     paths = [p.replace('\\', '/') for p in paths]
     all_entries = read_index()
