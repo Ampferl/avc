@@ -140,9 +140,33 @@ def hash_object(data, obj_type, write=True):
     return sha1
 
 
+def read_file(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
 def write_file(path, data):
     with open(path, 'wb') as f:
         f.write(data)
+
+
+def write_index(entries):
+    packed_entries = []
+    for entry in entries:
+        entry_head = struct.pack('!LLLLLLLLLL20sH',
+                entry.ctime_s, entry.ctime_n, entry.mtime_s, entry.mtime_n,
+                entry.dev, entry.ino, entry.mode, entry.uid, entry.gid,
+                entry.size, entry.sha1, entry.flags)
+        path = entry.path.encode()
+        length = ((62 + len(path) + 8) // 8) * 8
+        packed_entry = entry_head + path + b'\x00' * (length - 62 - len(path))
+        packed_entries.append(packed_entry)
+    header = struct.pack('!4sLL', b'DIRC', 2, len(entries))
+    all_data = header + b''.join(packed_entries)
+    digest = hashlib.sha1(all_data).digest()
+    write_file(os.path.join('.git', 'index'), all_data + digest)
+
+
 def init(repo):
     os.mkdir(repo)
     os.mkdir(os.path.join(repo, '.git'))
