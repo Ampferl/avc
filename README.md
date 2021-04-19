@@ -11,6 +11,11 @@ This is a simple reimplementation of git
 - [X] `avc hash-object` hash contents of given path (and optionally write to object store)
 - [X] `avc ls-files` list files in index
 - [ ] `avc log` show commit history
+
+## Resources
+- [Git Documentation](https://git-scm.com/doc)
+- [Tutorial about rebuilding Git in Ruby](https://thoughtbot.com/blog/rebuilding-git-in-ruby)
+
 ## About 
 - Email: [jonas@ampferl.com](mailto:jonas@ampferl.com)
 - Portfolio: [jonas.ampferl.com](https://jonas.ampferl.com)
